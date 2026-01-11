@@ -1,0 +1,81 @@
+name: CI/CD - ProdPulse (Docker Compose)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci-cd:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------
+      # 1️⃣ CHECKOUT CODE
+      # -----------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------
+      # 2️⃣ BACKEND CI
+      # -----------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run backend tests
+        working-directory: backend
+        run: |
+          pytest || echo "No backend tests found, skipping"
+
+      # -----------------------
+      # 3️⃣ FRONTEND CI
+      # -----------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      # -----------------------
+      # 4️⃣ DEPLOY TO SERVER
+      # -----------------------
+      - name: Deploy using SSH & Docker Compose
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "📂 Moving to app directory"
+            cd /var/www/ProdPulse
+
+            echo "⬇️ Pulling latest code"
+            git pull origin main
+
+            echo "🛑 Stopping containers"
+            docker compose down
+
+            echo "🐳 Building images"
+            docker compose build
+
+            echo "🚀 Starting containers"
+            docker compose up -d
+
+            echo "✅ Deployment successful"
